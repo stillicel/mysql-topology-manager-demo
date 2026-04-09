@@ -14,6 +14,7 @@ from rich.text import Text
 
 from mysql_topo import db
 from mysql_topo.connector import MySQLClient
+from mysql_topo.inspector import run_inspection
 
 console = Console()
 
@@ -281,6 +282,109 @@ def show_node_detail(ctx, host):
         console.print(f"\n[bold]Databases ({len(dbs)}):[/bold]  {', '.join(dbs)}")
 
     client.close()
+
+
+# ======================================================================
+# cluster-check
+# ======================================================================
+
+@cli.command("cluster-check")
+@click.argument("cluster_uuid")
+@click.option("--output-dir", default=None, type=click.Path(),
+              help="Directory for JSON report output.")
+@click.pass_context
+def cluster_check(ctx, cluster_uuid, output_dir):
+    """Run health inspection suite on a cluster (by UUID or name).
+
+    Executes Connection Count, Topology Scale, and Schema Scale checks
+    against all nodes in the cluster. Supports MySQL 5.7, 8.0, and 8.4.
+    """
+    use_mock = ctx.obj["mock"]
+
+    # Verify cluster exists
+    cluster, nodes = db.get_cluster(cluster_uuid)
+    if not cluster:
+        console.print(f"[red]Cluster '{cluster_uuid}' not found.[/red]")
+        sys.exit(1)
+
+    console.print(Panel(
+        f"[bold]MySQL-{cluster['name']}[/bold]  ({cluster['uuid']})\n"
+        f"Nodes: {len(nodes)}  |  Mode: {'Mock' if use_mock else 'Live'}",
+        title="Cluster Health Inspection",
+        border_style="blue",
+    ))
+
+    try:
+        results = run_inspection(cluster_uuid, use_mock=use_mock,
+                                 output_dir=output_dir)
+    except Exception as exc:
+        console.print(f"[red]Inspection failed: {exc}[/red]")
+        sys.exit(1)
+
+    # ---- Summary table ----
+    overall_healthy = True
+    table = Table(title="Inspection Results", show_lines=True)
+    table.add_column("Check", style="bold")
+    table.add_column("Status", justify="center")
+    table.add_column("Details")
+
+    for name, result in results.items():
+        status = result.get("status", "Unknown")
+        if status != "Healthy":
+            overall_healthy = False
+
+        status_str = "[green]Healthy[/green]" if status == "Healthy" else "[red]Unhealthy[/red]"
+
+        # Build a concise detail string per checker
+        detail = _format_check_detail(name, result)
+        table.add_row(name, status_str, detail)
+
+    console.print(table)
+    console.print()
+
+    if overall_healthy:
+        console.print("[bold green]Overall Status: Healthy[/bold green]")
+    else:
+        console.print("[bold red]Overall Status: Unhealthy[/bold red]")
+
+    if output_dir:
+        console.print(f"\n[dim]Report written to {output_dir}/[/dim]")
+
+
+def _format_check_detail(name: str, result: dict) -> str:
+    """Build a concise detail string for each checker result."""
+    if "error" in result:
+        return f"[red]{result['error']}[/red]"
+
+    if name == "connection_count":
+        nodes = result.get("nodes", [])
+        parts = []
+        for n in nodes:
+            tc = n.get("threads_connected", "?")
+            tag = "[green]ok[/green]" if n.get("healthy") else f"[red]{tc}>{n.get('threshold')}[/red]"
+            parts.append(f"{n['host']}:{n['port']}={tc} {tag}")
+        return "; ".join(parts) if parts else "—"
+
+    if name == "topology_scale":
+        sc = result.get("slave_count", "?")
+        mx = result.get("max_slaves", "?")
+        return f"slaves={sc} (max={mx})"
+
+    if name == "schema_scale":
+        ud = result.get("user_databases")
+        it = result.get("innodb_tables")
+        parts = []
+        if isinstance(ud, dict):
+            parts.append(f"user_dbs={ud['count']}/{ud['max_allowed']}")
+        if isinstance(it, dict):
+            parts.append(f"innodb_tables={it['count']}/{it['max_allowed']}")
+        node = result.get("checked_node", {})
+        if node:
+            parts.append(f"on {node.get('host', '?')}:{node.get('port', '?')}")
+        return "  ".join(parts) if parts else "—"
+
+    # Generic fallback
+    return str({k: v for k, v in result.items() if k != "status"})
 
 
 # ======================================================================

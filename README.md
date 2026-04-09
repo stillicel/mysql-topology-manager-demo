@@ -1,40 +1,207 @@
+# mysql-topo
 
-*This is a demo and for testing purpose.*
+> **Note:** This project is a demo for testing purposes only and is not intended for use in a production environment.
 
-*Here is the prompt I was used to create the project.*
+A unified CLI tool for MySQL topology management and cluster health inspection. Supports MySQL 5.7, 8.0, and 8.4 with version-aware SQL adapters, automated health checks, and a plugin-based inspection framework.
 
-### 🚀 Claude Code Task: MySQL Multi-Version Topology & Diagnostic Tool (`mysql-topo`)
+## Features
 
-**Role**: You are a Senior Python Developer and MySQL Expert. Your goal is to build a **read-only** CLI tool named `mysql-topo` for managing and diagnosing MySQL clusters.
+- **Multi-Version Support** — Compatible with MySQL 5.7, 8.0, and 8.4. Automatically adapts replication queries (`SHOW SLAVE STATUS` vs `SHOW REPLICA STATUS`) and field names based on the detected version.
+- **Topology Management** — Import cluster metadata from JSON, visualize master-slave topology trees, and monitor live node status (threads, replication lag, semi-sync).
+- **Node Diagnostics** — Aggregated processlist summaries, deadlock detection from InnoDB status, row lock and metadata lock analysis, and database listing.
+- **Cluster Health Inspection** — Plugin-based checker system that evaluates connection counts, topology scale, and schema scale against configurable thresholds.
+- **Mock Mode** — A global `--mock` flag simulates all MySQL metrics for testing and demos without live database connections.
+- **Rich Terminal UI** — Tables, trees, panels, and color-coded status indicators via the `rich` library.
+- **K8s-Native DBaaS Compatible** — Metadata-driven architecture via SQLite makes it easy to integrate with Kubernetes operators and DBaaS platforms for automated cluster registration.
 
-**Core Objective**:
-1. **Multi-Version Support**: Must be compatible with MySQL 5.7, 8.0, and 8.4.
-2. **Metadata Driven**: Use a local `topology.db` (SQLite) to store cluster metadata.
-3. **UI/UX**: Use the `rich` library for beautiful tables, tree views, and status highlighting (e.g., Red for Offline or high lag).
-4. **GitHub Automation**: Once the code is verified, use the `gh` CLI to create a private repository and push the code.
+## Installation
 
-**CLI Commands & Requirements**:
+Requires Python 3.10+.
 
-#### 1. `list-cluster`
-* List all managed clusters in a table.
-* **Naming Rule**: Display cluster names as `MySQL-{name}` (e.g., `MySQL-order`).
-* Columns: UUID, Formatted Name, Node Count, Description.
+```bash
+pip install -e .
+```
 
-#### 2. `show-cluster-info <UUID|Name>`
-* **Topology Tree**: Print a recursive tree view showing Master and its Slaves.
-* **Live Status Summary**: Connect to nodes in real-time and display: `Version`, `Threads_connected`, `Replication_Lag` (Seconds_Behind_Master).
-* **Semi-Sync Check**: Encapsulate this in a function (e.g., `get_semi_sync_status`). For now, implement a simplified check using core variables (like `rpl_semi_sync_master_enabled`) to show if it's ON/OFF.
+Or install dependencies manually:
 
-#### 3. `show-node-detail <Host/IP>`
-* **Aggregated Processlist**: Do NOT print the raw list. Summarize by `Command` and `User` (e.g., `Query: 5, Sleep: 20`).
-* **Deadlock Diagnosis**: Parse `SHOW ENGINE INNODB STATUS` to extract and display the **precise timestamp** of the `LATEST DETECTED DEADLOCK`.
-* **Lock Status**: Summarize current Row Locks and Metadata Locks (MDL) using `information_schema` or `performance_schema` where applicable.
-* **Database List**: List all database names within the instance.
+```bash
+pip install click rich PyMySQL
+```
 
-**Technical Constraints**:
-* **Import Management**: Provide an `import-config` command to batch-load metadata from a JSON file. No granular `add-node` commands are needed.
-* **Error Handling**: Distinctly mark unreachable nodes as **Offline** in the UI.
-* **Mock Mode**: Implement a global `--mock` flag. When enabled, the tool should simulate metrics, aggregated processlists, and InnoDB status strings (including deadlock timestamps) for versions 5.7, 8.0, and 8.4.
-* **SQL Compatibility**: Ensure SQL queries for metadata and diagnostics adapt to version-specific system tables (especially differences between 5.7 and 8.0+).
+## CLI Usage
 
+All commands support the `--mock` flag for simulated data.
 
+```bash
+mysql-topo [--mock] <command> [args]
+```
+
+### Import Cluster Configuration
+
+Load cluster metadata from a JSON file into the local topology store:
+
+```bash
+mysql-topo import-config sample_config.json
+```
+
+### List Clusters
+
+```bash
+mysql-topo list-cluster
+```
+
+Output:
+
+```
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
+┃ UUID                                 ┃ Cluster Name  ┃ Nodes ┃ Description         ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
+│ a1b2c3d4-e5f6-7890-abcd-ef1234567890 │ MySQL-order   │   3   │ Order service ...   │
+└──────────────────────────────────────┴───────────────┴───────┴─────────────────────┘
+```
+
+### Show Cluster Info
+
+View topology tree and live node status:
+
+```bash
+mysql-topo show-cluster-info <UUID|Name>
+mysql-topo --mock show-cluster-info order
+```
+
+Displays a master-slave topology tree and a live status table with version, thread count, replication lag, and semi-sync status per node.
+
+### Show Node Detail
+
+Deep diagnostics for a single node:
+
+```bash
+mysql-topo show-node-detail <Host/IP>
+mysql-topo --mock show-node-detail 10.0.1.10
+```
+
+Outputs:
+- Processlist summary (by Command, by User)
+- Latest detected deadlock timestamp
+- Row lock and metadata lock (MDL) summary
+- Database list
+
+### Cluster Health Check
+
+Run the full inspection suite on a cluster:
+
+```bash
+mysql-topo cluster-check <UUID|Name>
+mysql-topo --mock cluster-check a1b2c3d4-e5f6-7890-abcd-ef1234567890
+```
+
+Optionally save a JSON report:
+
+```bash
+mysql-topo --mock cluster-check order --output-dir ./reports
+```
+
+Output:
+
+```
+╭──────────────── Cluster Health Inspection ─────────────────╮
+│ MySQL-order  (a1b2c3d4-e5f6-7890-abcd-ef1234567890)       │
+│ Nodes: 3  |  Mode: Mock                                   │
+╰────────────────────────────────────────────────────────────╯
+┏━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Check            ┃ Status  ┃ Details                     ┃
+┡━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ connection_count │ Healthy │ 10.0.1.10:3306=42 ok; ...   │
+│ topology_scale   │ Healthy │ slaves=2 (max=5)            │
+│ schema_scale     │ Healthy │ user_dbs=1/5  tables=230/...│
+└──────────────────┴─────────┴─────────────────────────────┘
+
+Overall Status: Healthy
+```
+
+**Health checks performed:**
+
+| Check | Description | Threshold |
+|-------|-------------|-----------|
+| `connection_count` | `Threads_connected` on all nodes | > 3,500 per node |
+| `topology_scale` | Number of slave nodes | > 5 slaves |
+| `schema_scale` | User database count (`shopee_*`) and InnoDB table count on master | > 5 DBs or > 10,000 tables |
+
+## Project Structure
+
+```
+mysql_topo/
+├── __init__.py
+├── cli.py              # CLI entry point — all commands registered here
+├── connector.py        # MySQLClient — version-aware connection wrapper
+├── db.py               # SQLite metadata store (topology.db)
+├── mock.py             # Mock data engine for 5.7 / 8.0 / 8.4
+├── inspector.py        # Cluster inspection engine (bridges metadata + checkers)
+└── checkers/
+    ├── __init__.py         # Plugin registry (@register_checker decorator)
+    ├── connection_count.py # Threads_connected threshold check
+    ├── topology_scale.py   # Slave count limit check
+    └── schema_scale.py     # Database & table count check
+
+pyproject.toml          # Package metadata and dependencies
+sample_config.json      # Example cluster configuration (3 clusters)
+```
+
+### Architecture
+
+- **`cli.py`** — Click-based command group. Routes commands, manages the `--mock` flag, and renders output with Rich.
+- **`connector.py`** — `MySQLClient` class wrapping PyMySQL with lazy connections, version detection, and version-adaptive SQL for replication, semi-sync, processlist, InnoDB status, and lock queries.
+- **`db.py`** — SQLite-backed metadata store at `~/.mysql_topo/topology.db`. Stores cluster and node information with foreign key constraints.
+- **`inspector.py`** — Inspection engine that resolves cluster metadata from SQLite, builds a connection factory using stored credentials, and dispatches registered checkers.
+- **`checkers/`** — Self-registering plugin modules. Each checker receives `(cluster_meta, connect_func)` and returns a status dict. New checks can be added by creating a module with `@register_checker`.
+
+## Configuration
+
+Cluster metadata is stored in `~/.mysql_topo/topology.db` and imported via JSON:
+
+```json
+{
+  "clusters": [
+    {
+      "uuid": "a1b2c3d4-...",
+      "name": "order",
+      "description": "Order service MySQL cluster",
+      "nodes": [
+        {
+          "host": "10.0.1.10",
+          "port": 3306,
+          "role": "master",
+          "user": "admin",
+          "password": "",
+          "version": "8.0"
+        },
+        {
+          "host": "10.0.1.11",
+          "port": 3306,
+          "role": "slave",
+          "master_host": "10.0.1.10",
+          "master_port": 3306,
+          "user": "admin",
+          "password": "",
+          "version": "8.0"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## MySQL Version Compatibility
+
+| Feature | MySQL 5.7 | MySQL 8.0 | MySQL 8.4 |
+|---------|-----------|-----------|-----------|
+| Replication Status | `SHOW SLAVE STATUS` | `SHOW SLAVE STATUS` | `SHOW REPLICA STATUS` |
+| Lag Field | `Seconds_Behind_Master` | `Seconds_Behind_Master` | `Seconds_Behind_Source` |
+| IO Thread Field | `Slave_IO_Running` | `Slave_IO_Running` | `Replica_IO_Running` |
+| SQL Thread Field | `Slave_SQL_Running` | `Slave_SQL_Running` | `Replica_SQL_Running` |
+| Semi-Sync Variables | `rpl_semi_sync%` | `rpl_semi_sync%` | `rpl_semi_sync%` |
+| MDL Locks | `performance_schema` | `performance_schema` | `performance_schema` |
+
+## License
+
+This project is provided as-is for demonstration and internal tooling purposes.
