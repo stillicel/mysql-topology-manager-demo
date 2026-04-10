@@ -28,3 +28,5 @@ def get_all_checkers():
 from mysql_topo.checkers import connection_count  # noqa: E402, F401
 from mysql_topo.checkers import topology_scale     # noqa: E402, F401
 from mysql_topo.checkers import schema_scale       # noqa: E402, F401
+from mysql_topo.checkers import storage_check      # noqa: E402, F401
+from mysql_topo.checkers import fragmentation_check  # noqa: E402, F401

@@ -126,6 +126,31 @@ Overall Status: Healthy
 | `connection_count` | `Threads_connected` on all nodes | > 3,500 per node |
 | `topology_scale` | Number of slave nodes | > 5 slaves |
 | `schema_scale` | User database count (`shopee_*`) and InnoDB table count on master | > 5 DBs or > 10,000 tables |
+| `storage_check` | Physical tablespace size via `ALLOCATED_SIZE` (InnoDB) on master | > 10 GB per table, > 300 GB per schema |
+| `fragmentation_check` | InnoDB fragmentation ratio on tables > 100 MB on master | > 30% free ratio |
+
+### Storage & Fragmentation Health Checks
+
+Two additional checks focus on physical storage health using InnoDB internals rather than logical `TABLES.data_length` estimates.
+
+**`storage_check` — Physical Space Monitoring**
+
+Queries `INNODB_SYS_TABLESPACES` (MySQL 5.7) or `INNODB_TABLESPACES` (MySQL 8.0/8.4) and reads the `ALLOCATED_SIZE` column, which reflects actual disk usage including Transparent Page Compression. System schemas (`mysql`, `sys`, `information_schema`, `performance_schema`) are excluded.
+
+* **Table-level threshold:** any single tablespace with `ALLOCATED_SIZE` > **10 GB** is flagged as Unhealthy.
+* **Schema-level threshold:** total `ALLOCATED_SIZE` for all tables in a schema > **300 GB** is flagged as Unhealthy.
+
+**`fragmentation_check` — InnoDB Fragmentation**
+
+First filters tables by physical size: only tablespaces with `ALLOCATED_SIZE` > **100 MB** are evaluated (small tables are skipped to reduce noise). For qualifying tables, the fragmentation ratio is computed from `information_schema.TABLES`:
+
+```
+ratio = data_free / (data_length + index_length + data_free)
+```
+
+If the ratio exceeds **30%**, the table is marked as Unhealthy. This indicates significant wasted space that may benefit from `OPTIMIZE TABLE` or a table rebuild.
+
+Both checks are version-aware and run on the master node only. They handle permission errors and version mismatches gracefully without crashing.
 
 ## Project Structure
 
@@ -139,9 +164,11 @@ mysql_topo/
 ├── inspector.py        # Cluster inspection engine (bridges metadata + checkers)
 └── checkers/
     ├── __init__.py         # Plugin registry (@register_checker decorator)
-    ├── connection_count.py # Threads_connected threshold check
-    ├── topology_scale.py   # Slave count limit check
-    └── schema_scale.py     # Database & table count check
+    ├── connection_count.py     # Threads_connected threshold check
+    ├── topology_scale.py       # Slave count limit check
+    ├── schema_scale.py         # Database & table count check
+    ├── storage_check.py        # Physical tablespace size check (ALLOCATED_SIZE)
+    └── fragmentation_check.py  # InnoDB fragmentation ratio check
 
 pyproject.toml          # Package metadata and dependencies
 sample_config.json      # Example cluster configuration (3 clusters)
