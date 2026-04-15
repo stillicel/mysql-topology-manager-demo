@@ -129,6 +129,39 @@ Overall Status: Healthy
 | `storage_check` | Physical tablespace size via `ALLOCATED_SIZE` (InnoDB) on master | > 10 GB per table, > 300 GB per schema |
 | `fragmentation_check` | InnoDB fragmentation ratio on tables > 100 MB on master | > 30% free ratio |
 
+### Show InnoDB TPC Status
+
+Show InnoDB Transparent Page Compression (TPC) usage aggregated by database for a single node:
+
+```bash
+mysql-topo show-innodb-tpc-status <Host/IP>
+mysql-topo --mock show-innodb-tpc-status 10.0.1.10
+```
+
+Output:
+
+```
+╭───────────────────────────── InnoDB TPC Status ──────────────────────────────╮
+│ 10.0.1.10:3306  —  8.0.39-commercial                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+               InnoDB Transparent Page Compression — by Database
+┏━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Database   ┃ Total      ┃ Compressed ┃ Total      ┃ Total      ┃ Compression ┃
+┃            ┃ Tables     ┃ Tables     ┃ Logic Size ┃ Phys. Size ┃ Ratio (%)   ┃
+┡━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ analytics  │          3 │          2 │    4.39 GB │    2.52 GB │       57.3% │
+│ shop       │          5 │          4 │    5.59 GB │    4.19 GB │       74.9% │
+│ user_serv… │          4 │          2 │    4.42 GB │    3.70 GB │       83.7% │
+└────────────┴────────────┴────────────┴────────────┴────────────┴─────────────┘
+```
+
+Queries `INNODB_SYS_TABLESPACES` (MySQL 5.7) or `INNODB_TABLESPACES` (MySQL 8.0/8.4) and aggregates per schema:
+- **Total Tables** — count of all InnoDB tablespaces in the schema
+- **Compressed Tables** — count of tables with TPC enabled (`COMPRESSION != 'None'`)
+- **Total Logic Size** — sum of `FILE_SIZE` (logical data size)
+- **Total Physical Size** — sum of `ALLOCATED_SIZE` (actual disk usage after punch-hole compression)
+- **Compression Ratio** — `ALLOCATED_SIZE / FILE_SIZE * 100` (lower = better compression)
+
 ### Storage & Fragmentation Health Checks
 
 Two additional checks focus on physical storage health using InnoDB internals rather than logical `TABLES.data_length` estimates.
@@ -227,6 +260,7 @@ Cluster metadata is stored in `~/.mysql_topo/topology.db` and imported via JSON:
 | IO Thread Field | `Slave_IO_Running` | `Slave_IO_Running` | `Replica_IO_Running` |
 | SQL Thread Field | `Slave_SQL_Running` | `Slave_SQL_Running` | `Replica_SQL_Running` |
 | Semi-Sync Variables | `rpl_semi_sync%` | `rpl_semi_sync%` | `rpl_semi_sync%` |
+| InnoDB Tablespaces | `INNODB_SYS_TABLESPACES` | `INNODB_TABLESPACES` | `INNODB_TABLESPACES` |
 | MDL Locks | `performance_schema` | `performance_schema` | `performance_schema` |
 
 ## License
