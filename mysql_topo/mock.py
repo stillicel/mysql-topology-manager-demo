@@ -183,3 +183,31 @@ def mock_databases() -> list[str]:
         "analytics",
         "user_service",
     ]
+
+
+def mock_innodb_tpc_status(version: str) -> list[dict]:
+    """Simulate rows from INNODB_SYS_TABLESPACES / INNODB_TABLESPACES."""
+    schemas = {
+        "shop": ["orders", "inventory", "customers", "products", "reviews"],
+        "analytics": ["events", "sessions", "pageviews"],
+        "user_service": ["users", "profiles", "auth_tokens", "permissions"],
+    }
+    rows = []
+    for db_name, tables in schemas.items():
+        for tbl in tables:
+            file_size = random.randint(8 * 1024 * 1024, 2 * 1024 * 1024 * 1024)
+            compressed = random.choice([True, True, False])
+            if compressed:
+                ratio = random.uniform(0.3, 0.85)
+                allocated_size = int(file_size * ratio)
+                compression = random.choice(["zlib", "lz4"])
+            else:
+                allocated_size = file_size
+                compression = "None"
+            rows.append({
+                "NAME": f"{db_name}/{tbl}",
+                "FILE_SIZE": file_size,
+                "ALLOCATED_SIZE": allocated_size,
+                "COMPRESSION": compression,
+            })
+    return rows

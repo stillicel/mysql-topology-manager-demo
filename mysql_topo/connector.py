@@ -187,6 +187,32 @@ class MySQLClient:
         return {"row_locks": row_locks, "mdl_locks": mdl_locks}
 
     # ------------------------------------------------------------------
+    # InnoDB TPC (Transparent Page Compression) status
+    # ------------------------------------------------------------------
+
+    def get_innodb_tpc_status(self) -> list[dict]:
+        """Query InnoDB tablespace info for TPC aggregation.
+
+        Returns rows with keys: NAME, FILE_SIZE, ALLOCATED_SIZE, COMPRESSION.
+        Uses INNODB_SYS_TABLESPACES on 5.7, INNODB_TABLESPACES on 8.0+.
+        """
+        if self.use_mock:
+            return mk.mock_innodb_tpc_status(self.version_hint)
+        if self._is_57():
+            table = "INFORMATION_SCHEMA.INNODB_SYS_TABLESPACES"
+            sql = (
+                f"SELECT NAME, FILE_SIZE, ALLOCATED_SIZE, "
+                f"'None' AS COMPRESSION FROM {table}"
+            )
+        else:
+            table = "INFORMATION_SCHEMA.INNODB_TABLESPACES"
+            sql = (
+                f"SELECT NAME, FILE_SIZE, ALLOCATED_SIZE, "
+                f"IFNULL(COMPRESSION, 'None') AS COMPRESSION FROM {table}"
+            )
+        return self._query(sql)
+
+    # ------------------------------------------------------------------
     # Databases
     # ------------------------------------------------------------------
 

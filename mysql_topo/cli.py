@@ -388,6 +388,107 @@ def _format_check_detail(name: str, result: dict) -> str:
 
 
 # ======================================================================
+# show-innodb-tpc-status
+# ======================================================================
+
+def _human_size(nbytes: int | float) -> str:
+    """Convert bytes to a human-readable string (KB, MB, GB, TB)."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(nbytes) < 1024.0:
+            return f"{nbytes:,.2f} {unit}"
+        nbytes /= 1024.0
+    return f"{nbytes:,.2f} PB"
+
+
+@cli.command("show-innodb-tpc-status")
+@click.argument("host")
+@click.pass_context
+def show_innodb_tpc_status(ctx, host):
+    """Show InnoDB Transparent Page Compression summary by database.
+
+    Queries INNODB_SYS_TABLESPACES (5.7) or INNODB_TABLESPACES (8.0+)
+    and aggregates file size, allocated size, and compression ratio per schema.
+    """
+    use_mock = ctx.obj["mock"]
+    node = db.get_node_by_host(host)
+    if not node:
+        console.print(f"[red]Node '{host}' not found in topology.db.[/red]")
+        sys.exit(1)
+
+    client = _client(node, use_mock)
+
+    ver, offline = _safe(client.get_version)
+    if offline:
+        console.print(f"[red]● Node {host} is Offline[/red]")
+        client.close()
+        return
+
+    rows, err = _safe(client.get_innodb_tpc_status, [])
+    client.close()
+    if err:
+        console.print(f"[red]Failed to query InnoDB tablespace info.[/red]")
+        return
+
+    # Aggregate by database (schema)
+    stats: dict[str, dict] = {}
+    for row in rows:
+        name = row.get("NAME", "")
+        if "/" not in name:
+            continue
+        db_name = name.split("/", 1)[0]
+
+        entry = stats.setdefault(db_name, {
+            "total_tables": 0,
+            "compressed_tables": 0,
+            "total_file_size": 0,
+            "total_allocated_size": 0,
+        })
+        entry["total_tables"] += 1
+        if row.get("COMPRESSION", "None") != "None":
+            entry["compressed_tables"] += 1
+        entry["total_file_size"] += int(row.get("FILE_SIZE", 0))
+        entry["total_allocated_size"] += int(row.get("ALLOCATED_SIZE", 0))
+
+    if not stats:
+        console.print("[yellow]No InnoDB tablespace data found.[/yellow]")
+        return
+
+    console.print(Panel(
+        f"[bold]{host}:{node['port']}[/bold]  —  {ver}",
+        title="InnoDB TPC Status",
+    ))
+
+    table = Table(title="InnoDB Transparent Page Compression — by Database", show_lines=True)
+    table.add_column("Database", style="bold cyan")
+    table.add_column("Total Tables", justify="right")
+    table.add_column("Compressed Tables", justify="right")
+    table.add_column("Total Logic Size", justify="right")
+    table.add_column("Total Physical Size", justify="right")
+    table.add_column("Compression Ratio (%)", justify="right")
+
+    for db_name in sorted(stats):
+        s = stats[db_name]
+        file_size = s["total_file_size"]
+        alloc_size = s["total_allocated_size"]
+        if file_size > 0:
+            ratio = (alloc_size / file_size) * 100
+            ratio_str = f"{ratio:.1f}%"
+        else:
+            ratio_str = "N/A"
+
+        table.add_row(
+            db_name,
+            str(s["total_tables"]),
+            str(s["compressed_tables"]),
+            _human_size(file_size),
+            _human_size(alloc_size),
+            ratio_str,
+        )
+
+    console.print(table)
+
+
+# ======================================================================
 # Entry point
 # ======================================================================
 
