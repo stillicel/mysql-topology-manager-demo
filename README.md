@@ -1,5 +1,7 @@
 # mysql-topo
 
+**Current version: `v0.2.0`** — see [release-notes.txt](release-notes.txt) for the full changelog.
+
 > **Note:** This project is a demo for testing purposes only and is not intended for use in a production environment.
 
 A unified CLI tool for MySQL topology management and cluster health inspection. Supports MySQL 5.7, 8.0, and 8.4 with version-aware SQL adapters, automated health checks, and a plugin-based inspection framework.
@@ -128,6 +130,25 @@ Overall Status: Healthy
 | `schema_scale` | User database count (`shopee_*`) and InnoDB table count on master | > 5 DBs or > 10,000 tables |
 | `storage_check` | Physical tablespace size via `ALLOCATED_SIZE` (InnoDB) on master | > 10 GB per table, > 300 GB per schema |
 | `fragmentation_check` | InnoDB fragmentation ratio on tables > 100 MB on master | > 30% free ratio |
+
+### Show Version Info
+
+Print the installed `mysql-topo` version and the location of the release notes:
+
+```bash
+mysql-topo show-version-info
+```
+
+Output:
+
+```
+╭──────────────────── Version Info ─────────────────────╮
+│ mysql-topo  v0.2.0                                    │
+│ Release notes: /path/to/release-notes.txt             │
+╰───────────────────────────────────────────────────────╯
+```
+
+See [release-notes.txt](release-notes.txt) for the full changelog.
 
 ### Show InnoDB TPC Status
 
