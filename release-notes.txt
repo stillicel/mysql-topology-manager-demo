@@ -1,0 +1,51 @@
+mysql-topo — Release Notes
+==========================
+
+All notable changes to this project are recorded here. The newest release is
+listed first. Version numbers follow semantic versioning (MAJOR.MINOR.PATCH).
+
+
+v0.2.0 — 2026-04-18
+-------------------
+Added
+  * New CLI sub-command `show-version-info` that prints the current tool
+    version and a pointer to this release-notes file.
+  * `mysql_topo.__version__` module attribute as the single source of truth
+    for the package version.
+
+Changed
+  * README now surfaces the current version at the top and links to
+    release-notes.txt so users can track changes without leaving the repo.
+
+
+v0.1.0 — 2026-04-17
+-------------------
+Initial public demo release.
+
+Added
+  * Core CLI group `mysql-topo` built on Click + Rich, with a global `--mock`
+    flag for simulated data.
+  * `import-config` — batch-import cluster metadata from JSON into a local
+    SQLite store at `~/.mysql_topo/topology.db`.
+  * `list-cluster` — render all managed clusters as a Rich table.
+  * `show-cluster-info` — master/slave topology tree plus a live status
+    table (version, threads, replication lag, semi-sync).
+  * `show-node-detail` — per-node diagnostics: processlist summary, latest
+    InnoDB deadlock timestamp, row-lock / MDL-lock summary, database list.
+  * `cluster-check` — plugin-based cluster health inspection framework with
+    five built-in checkers:
+      - connection_count     (Threads_connected > 3500 per node)
+      - topology_scale       (slaves > 5)
+      - schema_scale         (user databases > 5, InnoDB tables > 10000)
+      - storage_check        (tablespace ALLOCATED_SIZE > 10 GB / schema > 300 GB)
+      - fragmentation_check  (InnoDB data_free ratio > 30 % on tables > 100 MB)
+    Optional `--output-dir` writes a structured JSON report.
+  * `show-innodb-tpc-status` — per-database Transparent Page Compression
+    summary (total/compressed table counts, logical vs physical size,
+    compression ratio).
+  * MySQL multi-version support: version-aware SQL adapters for 5.7, 8.0,
+    and 8.4 (SHOW SLAVE STATUS vs SHOW REPLICA STATUS, Seconds_Behind_Master
+    vs Seconds_Behind_Source, INNODB_SYS_TABLESPACES vs INNODB_TABLESPACES).
+  * Mock data engine producing realistic global status, slave status,
+    semi-sync variables, processlist, InnoDB status (with deadlock block),
+    lock summaries, and InnoDB tablespace rows.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import click
@@ -12,9 +13,11 @@ from rich.tree import Tree
 from rich.panel import Panel
 from rich.text import Text
 
-from mysql_topo import db
+from mysql_topo import __version__, db
 from mysql_topo.connector import MySQLClient
 from mysql_topo.inspector import run_inspection
+
+RELEASE_NOTES_FILENAME = "release-notes.txt"
 
 console = Console()
 
@@ -486,6 +489,38 @@ def show_innodb_tpc_status(ctx, host):
         )
 
     console.print(table)
+
+
+# ======================================================================
+# show-version-info
+# ======================================================================
+
+def _find_release_notes() -> str | None:
+    """Locate release-notes.txt next to the installed package or repo root."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     RELEASE_NOTES_FILENAME),
+        os.path.join(os.getcwd(), RELEASE_NOTES_FILENAME),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+@cli.command("show-version-info")
+@click.pass_context
+def show_version_info(ctx):
+    """Show the installed mysql-topo version and link to release notes."""
+    notes_path = _find_release_notes()
+    notes_line = notes_path if notes_path else f"{RELEASE_NOTES_FILENAME} (not found on disk)"
+
+    console.print(Panel(
+        f"[bold cyan]mysql-topo[/bold cyan]  v[bold green]{__version__}[/bold green]\n"
+        f"[dim]Release notes: {notes_line}[/dim]",
+        title="Version Info",
+        border_style="blue",
+    ))
 
 
 # ======================================================================
